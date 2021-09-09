@@ -26,8 +26,10 @@ import logging
 
 import copy
 import pyvisa
+from pyvisa.errors import VisaIOError
 import numpy as np
 from pkg_resources import parse_version
+import re
 
 from .adapter import Adapter
 
@@ -156,3 +158,121 @@ class VISAAdapter(Adapter):
 
     def __repr__(self):
         return "<VISAAdapter(resource='%s')>" % self.connection.resource_name
+
+
+class RetryingVISAAdapter(VISAAdapter):
+    """ Adapter class for the VISA library using PyVISA to communicate
+    with instruments.
+    Checks replies from instruments for sanity
+
+    :param sanity: regex string of how a reply from the device must look like
+                        defaults to accepting all replies
+    :param resource: VISA resource name that identifies the address
+    :param visa_library: VisaLibrary Instance, path of the VISA library or VisaLibrary spec string (@py or @ni).
+                         if not given, the default for the platform will be used.
+    :param preprocess_reply: optional callable used to preprocess strings
+        received from the instrument. The callable returns the processed string.
+    :param kwargs: Any valid key-word arguments for constructing a PyVISA instrument
+    """
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs, sanity=".*")
+        self.sanity_regex = sanity
+
+    def ask(self, command):
+        """ Write the command to the instrument and return the resulting
+        ASCII response
+        Do a sanity check for the returned value, if this fails recursively
+        repeat
+
+        :param command: SCPI command string to be sent to the instrument
+        :returns: String ASCII response of the instrument
+        """
+        device_output = self.connection.query(command)
+        return self.sanity_handling(device_output, command)
+
+    def sanity_handling(self, device_output, command, *args, **kwargs):
+        """match the reply from a device with the specifying regex
+        retry the request in case of mismatch
+
+
+        :param device_output: String ASCII response of the device
+        :param command: command used in the initial query
+        :returns:   in case it matches: device_output,
+                    else: recursively retry self.ask(command)
+        """
+        try:
+            if not re.match(self.sanity_regex, device_output):
+                try:
+                    self.read()
+                except VisaIOError as e_visa:
+                    if (
+                        isinstance(e_visa, type(self.timeouterror))
+                        and e_visa.args == self.timeouterror.args
+                    ):
+                        pass
+                    else:
+                        raise e_visa
+                return self.ask(command)
+        except TypeError:
+            try:
+                self.read()
+            except VisaIOError as e_visa:
+                if (
+                    isinstance(e_visa, type(self.timeouterror))
+                    and e_visa.args == self.timeouterror.args
+                ):
+                    pass
+                else:
+                    raise e_visa
+            return self.ask(command)
+        return device_output
+
+
+class RetryingVISAAdapter_oinst(RetryingVISAAdapter):
+    """docstring for RetryingVisaAdapter"""
+
+    def sanity_handling(self, device_output, command, *args, **kwargs):
+        """match the reply from a device with the specifying regex
+        retry the request in case of mismatch
+        use custom sanity regex incorporating the command message
+
+
+        :param device_output: String ASCII response of the device
+        :param command: command used in the initial query
+        :returns:   in case it matches: device_output,
+                    else: recursively retry self.ask(command)
+        """
+        san_regex = self.sanity_regex.format(c=command[0])
+
+        try:
+            if not re.match(san_regex, device_output):
+                try:
+                    self.read()
+                except VisaIOError as e_visa:
+                    if (
+                        isinstance(e_visa, type(self.timeouterror))
+                        and e_visa.args == self.timeouterror.args
+                    ):
+                        pass
+                    else:
+                        raise e_visa
+                return self.ask(command)
+        except TypeError:
+            try:
+                self.read()
+            except VisaIOError as e_visa:
+                if (
+                    isinstance(e_visa, type(self.timeouterror))
+                    and e_visa.args == self.timeouterror.args
+                ):
+                    pass
+                else:
+                    raise e_visa
+            return self.ask(command)
+        return device_output
+
+
+oinst_visaAdapter = RetryingVISAAdapter_oinst(sanity="{}.*")
+
+
