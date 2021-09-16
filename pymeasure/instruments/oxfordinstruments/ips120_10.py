@@ -158,28 +158,28 @@ class IPS120_10(Instrument):
         "R1",
         """ A floating point property that returns the measured magnet current of
         the IPS in amps. """,
-        get_process=lambda v: float(v[1:]),
+        get_process=lambda v: float(v[1:]) * 1e-2,
     )
 
     demand_current = Instrument.measurement(
         "R0",
         """ A floating point property that returns the demand magnet current of
         the IPS in amps. """,
-        get_process=lambda v: float(v[1:]),
+        get_process=lambda v: float(v[1:]) * 1e-2,
     )
 
     demand_field = Instrument.measurement(
         "R7",
         """ A floating point property that returns the demand magnetic field of
         the IPS in Tesla. """,
-        get_process=lambda v: float(v[1:]),
+        get_process=lambda v: float(v[1:]) * 1e-2,
     )
 
     persistent_field = Instrument.measurement(
         "R18",
         """ A floating point property that returns the persistent magnetic field of
         the IPS in Tesla. """,
-        get_process=lambda v: float(v[1:]),
+        get_process=lambda v: float(v[1:]) * 1e-2,
     )
 
     switch_heater_status = Instrument.control(
@@ -240,7 +240,7 @@ class IPS120_10(Instrument):
         "R0", "$I%f",
         """ A floating point property that controls the magnet current set-point of
         the IPS in ampere. """,
-        get_process=lambda v: float(v[1:]),
+        get_process=lambda v: float(v[1:]) * 1e-2,
         validator=truncated_range,
         values=[0, _MAX_CURRENT]
     )
@@ -249,7 +249,7 @@ class IPS120_10(Instrument):
         "R8", "$J%f",
         """ A floating point property that controls the magnetic field set-point of
         the IPS in Tesla. """,
-        get_process=lambda v: float(v[1:]),
+        get_process=lambda v: float(v[1:]) * 1e-2,
         validator=truncated_range,
         values=_FIELD_RANGE,
     )
@@ -258,7 +258,7 @@ class IPS120_10(Instrument):
         "R9", "$T%f",
         """ A floating point property that controls the sweep-rate of
         the IPS in Tesla/minute. """,
-        get_process=lambda v: float(v[1:]),
+        get_process=lambda v: float(v[1:]) * 1e-2,
     )
 
     activity = Instrument.control(
