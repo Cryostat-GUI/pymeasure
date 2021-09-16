@@ -241,6 +241,7 @@ class IPS120_10(Instrument):
         """ A floating point property that controls the magnet current set-point of
         the IPS in ampere. """,
         get_process=lambda v: float(v[1:]) * 1e-2,
+        set_process=lambda v: int(v * 1e2),
         validator=truncated_range,
         values=[0, _MAX_CURRENT]
     )
@@ -250,6 +251,7 @@ class IPS120_10(Instrument):
         """ A floating point property that controls the magnetic field set-point of
         the IPS in Tesla. """,
         get_process=lambda v: float(v[1:]) * 1e-2,
+        set_process=lambda v: int(v * 1e2),
         validator=truncated_range,
         values=_FIELD_RANGE,
     )
@@ -259,6 +261,7 @@ class IPS120_10(Instrument):
         """ A floating point property that controls the sweep-rate of
         the IPS in Tesla/minute. """,
         get_process=lambda v: float(v[1:]) * 1e-2,
+        set_process=lambda v: int(v * 1e2),
     )
 
     activity = Instrument.control(
