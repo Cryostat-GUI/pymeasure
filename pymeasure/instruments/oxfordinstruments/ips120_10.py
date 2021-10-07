@@ -249,7 +249,7 @@ class IPS120_10(Instrument):
         self.switch_heater_status = status_value
 
     current_setpoint = Instrument.control(
-        "R0", "$I%f",
+        "R0", "$I%d",
         """ A floating point property that controls the magnet current set-point of
         the IPS in ampere. """,
         get_process=lambda v: float(v[1:]) * 1e-2,
@@ -259,7 +259,7 @@ class IPS120_10(Instrument):
     )
 
     field_setpoint = Instrument.control(
-        "R8", "$J%f",
+        "R8", "$J%d",
         """ A floating point property that controls the magnetic field set-point of
         the IPS in Tesla. """,
         get_process=lambda v: float(v[1:]) * 1e-2,
@@ -269,7 +269,7 @@ class IPS120_10(Instrument):
     )
 
     sweep_rate = Instrument.control(
-        "R9", "$T%f",
+        "R9", "$T%d",
         """ A floating point property that controls the sweep-rate of
         the IPS in Tesla/minute. """,
         get_process=lambda v: float(v[1:]) * 1e-2,
