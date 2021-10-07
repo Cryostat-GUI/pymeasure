@@ -302,6 +302,7 @@ class IPS120_10(Instrument):
     def enable_control(self):
         """ Method that enables active control of the IPS.
         Sets control to remote and turns off the clamp. """
+        log.debug("start enabling control")
         self.control_mode = "RU"
 
         # Turn off clamping if still clamping
@@ -310,15 +311,18 @@ class IPS120_10(Instrument):
 
         # Turn on switch-heater if field at zero
         if self.field == 0:
+            log.debug("enabling switch heater")
             self.switch_heater_enabled = True
 
     def disable_control(self):
         """ Method that disable active control of the IPS (if at 0T).
         Turns off the switch heater, clamps the output and sets control to local.
         Raises a :class:`.MagnetError` if field not at 0T. """
+        log.debug("start disabling control")
         if not self.field == 0:
             raise MagnetError("IPS 120-10: field not at 0T; cannot disable the supply. ")
 
+        log.debug("disabling switch heater")
         self.switch_heater_enabled = False
         self.activity = "clamp"
         self.control_mode = "LU"
@@ -327,10 +331,12 @@ class IPS120_10(Instrument):
         """ Method that enables the persistent magnetic field mode.
          Raises a :class:`.MagnetError` if the magnet is not at rest. """
         # Check if system idle
+        log.debug("enabling persistent mode")
         if not self.sweep_status == "at rest":
             raise MagnetError("IPS 120-10: magnet not at rest; cannot enable persistent mode")
 
         if not self.switch_heater_enabled:
+            log.debug("magnet already in persistent mode")
             return  # Magnet already in persistent mode
         else:
             self.activity = "hold"
@@ -344,6 +350,7 @@ class IPS120_10(Instrument):
         """ Method that disables the persistent magnetic field mode.
          Raises a :class:`.MagnetError` if the magnet is not at rest. """
         # Check if system idle
+        log.debug("disabling persistent mode")
         if not self.sweep_status == "at rest":
             raise MagnetError("IPS 120-10: magnet not at rest; cannot disable persistent mode")
 
@@ -354,11 +361,15 @@ class IPS120_10(Instrument):
             self.field_setpoint = self.field
 
         if self.switch_heater_enabled:
+            log.debug("magnet already in demand mode or at 0 field")
             return  # Magnet already in demand mode or at 0 field
         else:
+            log.debug("set activity to 'to setpoint'")
             self.activity = "to setpoint"
             self.wait_for_idle()
+            log.debug("set activity to 'hold'")
             self.activity = "hold"
+            log.debug("enable switch heater")
             self.switch_heater_enabled = True
             log.info("IPS 120-10: Wait for for switch heater delay")
             sleep(self._SWITCH_HEATER_DELAY)
@@ -375,21 +386,26 @@ class IPS120_10(Instrument):
             maximum time.
         :param should_stop: A function that returns :code:`True` when this function should return early.
         """
+        log.debug("waiting for magnet to be idle")
         error_ct = 0
         start_time = time()
         status = None
         while True:
+            log.debug("sleeping for %d s", delay)
             sleep(delay)
 
             try:
+                log.debug("checking the status of the sweep")
                 status = self.sweep_status
             except ValueError as e:
                 log.error("IPS 120-10: Issue with getting status (#%d): %s" % (error_ct, e))
                 error_ct += 1
 
             if status == "at rest":
+                log.debug("status is 'at rest', waiting is done")
                 break
             if should_stop():
+                log.debug("external function signals to stop waiting")
                 break
 
             if max_errors is not None and error_ct > max_errors:
@@ -421,9 +437,12 @@ class IPS120_10(Instrument):
 
         if self.switch_heater_enabled:
             pass  # Magnet in demand mode
+            log.debug("Magnet in demand mode, continuing")
         else:
             # Magnet in persistent mode
+            log.debug("Magnet in persistent mode")
             if persistent_mode_control:
+                log.debug("trying to disable persistent mode")
                 self.disable_persistent_mode()
             else:
                 raise MagnetError(
@@ -432,18 +451,27 @@ class IPS120_10(Instrument):
                 )
 
         if sweep_rate is not None:
+            log.debug("setting the sweep rate to %s", sweep_rate)
             self.sweep_rate = sweep_rate
 
         if field == 0:
+            log.debug("setting activity to 'to zero' - running down the field")
             self.activity = "to zero"
         else:
+            log.debug("setting activity to 'to setpoint'")
             self.activity = "to setpoint"
+            log.debug("setting the field_setpoint to %d", field)
             self.field_setpoint = field
 
+        log.debug("waiting for magnet to be finished")
         self.wait_for_idle()
+        log.debug("sleeping for additional 10s (whatever the reason)")
         sleep(10)
 
         if persistent_mode_control and field != 0:
+            log.debug(
+                "persistent mode control is on, and setpoint_field !=0 - enabling persistent mode"
+            )
             self.enable_persistent_mode()
 
     def train_magnet(self, training_scheme):
