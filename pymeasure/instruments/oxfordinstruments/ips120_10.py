@@ -28,6 +28,7 @@ from time import sleep, time
 import numpy
 
 from pymeasure.instruments import Instrument
+from pymeasure.adapters import VISAAdapter
 from pymeasure.instruments.validators import strict_discrete_set, \
     truncated_range, strict_range
 
@@ -80,9 +81,10 @@ class IPS120_10(Instrument):
 
     :param clear_buffer: A boolean property that controls whether the instrument
         buffer is clear upon initialisation.
-    :param switch_heater_delay: The time in seconds (default is 20s) to wait after
-        the switch-heater is turned on or off before the heater is expected to be
-        in the correct mode.
+    :param switch_heater_heating_delay: The time in seconds (default is 20s) to wait after
+        the switch-heater is turned on before the heater is expected to be heated.
+    :param switch_heater_cooling_delay: The time in seconds (default is 20s) to wait after
+        the switch-heater is turned off before the heater is expected to be cooled down.
     :param field_range: A numeric value or a tuple of two values to indicate the
         lowest and highest allowed magnetic fields. If a numeric value is provided
         the range is expected to be from :code:`-field_range` to :code:`+field_range`.
@@ -91,8 +93,9 @@ class IPS120_10(Instrument):
 
     _MAX_CURRENT = 120  # Ampere
     _MAX_VOLTAGE = 10  # Volts
-    _SWITCH_HEATER_DELAY = 20  # Seconds
-    _FIELD_RANGE = [-16, 16]  # Tesla
+    _SWITCH_HEATER_HEATING_DELAY = 20  # Seconds
+    _SWITCH_HEATER_COOLING_DELAY = 20  # Seconds
+    _FIELD_RANGE = [-7, 7]  # Tesla
 
     _SWITCH_HEATER_SET_VALUES = {
         False: 0,  # Heater off
@@ -109,7 +112,8 @@ class IPS120_10(Instrument):
 
     def __init__(self, resourceName,
                  clear_buffer=True,
-                 switch_heater_delay=None,
+                 switch_heater_heating_delay=None,
+                 switch_heater_cooling_delay=None,
                  field_range=None,
                  **kwargs):
 
@@ -122,8 +126,16 @@ class IPS120_10(Instrument):
             **kwargs
         )
 
-        if switch_heater_delay is not None:
-            self._SWITCH_HEATER_DELAY = switch_heater_delay
+        if isinstance(self.adapter, VISAAdapter):
+            self.adapter.connection.baud_rate = 9600
+            self.adapter.connection.data_bits = 8
+            self.adapter.connection.parity = 0
+            self.adapter.connection.stop_bits = 20
+
+        if switch_heater_heating_delay is not None:
+            self._SWITCH_HEATER_HEATING_DELAY = switch_heater_heating_delay
+        if switch_heater_cooling_delay is not None:
+            self._SWITCH_HEATER_COOLING_DELAY = switch_heater_cooling_delay
 
         if field_range is not None:
             if isinstance(field_range, (float, int)):
@@ -300,8 +312,9 @@ class IPS120_10(Instrument):
         return field
 
     def enable_control(self):
-        """ Method that enables active control of the IPS.
-        Sets control to remote and turns off the clamp. """
+        """ Enable active control of the IPS by setting control to remote and
+        turning off the clamp.
+        """
         log.debug("start enabling control")
         self.control_mode = "RU"
 
@@ -315,9 +328,9 @@ class IPS120_10(Instrument):
             self.switch_heater_enabled = True
 
     def disable_control(self):
-        """ Method that disable active control of the IPS (if at 0T).
-        Turns off the switch heater, clamps the output and sets control to local.
-        Raises a :class:`.MagnetError` if field not at 0T. """
+        """ Disable active control of the IPS (if at 0T) by turning off the switch heater,
+        clamping the output and setting control to local.
+        Raise a :class:`.MagnetError` if field not at 0T. """
         log.debug("start disabling control")
         if not self.field == 0:
             raise MagnetError("IPS 120-10: field not at 0T; cannot disable the supply. ")
@@ -328,8 +341,8 @@ class IPS120_10(Instrument):
         self.control_mode = "LU"
 
     def enable_persistent_mode(self):
-        """ Method that enables the persistent magnetic field mode.
-         Raises a :class:`.MagnetError` if the magnet is not at rest. """
+        """ Enable the persistent magnetic field mode.
+         Raise a :class:`.MagnetError` if the magnet is not at rest. """
         # Check if system idle
         log.debug("enabling persistent mode")
         if not self.sweep_status == "at rest":
@@ -342,13 +355,13 @@ class IPS120_10(Instrument):
             self.activity = "hold"
             self.switch_heater_enabled = False
             log.info("IPS 120-10: Wait for for switch heater delay")
-            sleep(self._SWITCH_HEATER_DELAY)
+            sleep(self._SWITCH_HEATER_COOLING_DELAY)
             self.activity = "to zero"
             self.wait_for_idle()
 
     def disable_persistent_mode(self):
-        """ Method that disables the persistent magnetic field mode.
-         Raises a :class:`.MagnetError` if the magnet is not at rest. """
+        """ Disable the persistent magnetic field mode.
+         Raise a :class:`.MagnetError` if the magnet is not at rest. """
         # Check if system idle
         log.debug("disabling persistent mode")
         if not self.sweep_status == "at rest":
@@ -372,18 +385,18 @@ class IPS120_10(Instrument):
             log.debug("enable switch heater")
             self.switch_heater_enabled = True
             log.info("IPS 120-10: Wait for for switch heater delay")
-            sleep(self._SWITCH_HEATER_DELAY)
+            sleep(self._SWITCH_HEATER_HEATING_DELAY)
 
     def wait_for_idle(self, delay=1, max_errors=10, max_wait_time=None, should_stop=lambda: False):
-        """ Method that waits until the system is at rest (i.e. current of field not ramping).
+        """ Wait until the system is at rest (i.e. current of field not ramping).
 
         :param delay: Time in seconds between each query into the state of the instrument.
         :param max_errors: Maximum number of errors that is allowed in the communication with the
             instrument before the wait is terminated (by raising a :class:`.MagnetError`).
             :code:`None` is interpreted as no maximum error count.
-        :param max_wait_time: Maximum time to wait before is at rest. If the system is not at rest
-            within this time a :class:`TimeoutError` is raised. :code:`None` is interpreted as no
-            maximum time.
+        :param max_wait_time: Maximum time in seconds to wait before is at rest. If the system is not
+            at rest within this time a :class:`TimeoutError` is raised. :code:`None` is interpreted
+            as no maximum time.
         :param should_stop: A function that returns :code:`True` when this function should return early.
         """
         log.debug("waiting for magnet to be idle")
@@ -414,16 +427,16 @@ class IPS120_10(Instrument):
                 raise TimeoutError("IPS 120-10: Magnet not idle within max wait time.")
 
     def set_field(self, field, sweep_rate=None, persistent_mode_control=True):
-        """ Method that changes the applied magnetic field.
+        """ Change the applied magnetic field to a new specified magnitude.
         If allowed (via `persistent_mode_control`) the persistent mode will be turned off
         if needed and turned on when the magnetic field is reached.
         When the new field set-point is 0, the set-point of the instrument will not be changed
         but rather the `to zero` functionality will be used. Also, the persistent mode will not
         turned on upon reaching the 0T field in this case.
 
-        :param field: The new set-point for the magnetic field.
+        :param field: The new set-point for the magnetic field in Tesla.
         :param sweep_rate: A numeric value that controls the rate with which to change
-            the magnetic field.
+            the magnetic field in Tesla/minute.
         :param persistent_mode_control: A boolean that controls whether the persistent mode
             may be turned off (if needed before sweeping) and on (when the field is reached);
             if set to :code:`False` but the system is in persistent mode, a :class:`.MagnetError`
@@ -475,11 +488,11 @@ class IPS120_10(Instrument):
             self.enable_persistent_mode()
 
     def train_magnet(self, training_scheme):
-        """ Method that trains the magnet after cooling down. Afterwards, the field
-        is set back to 0 tesla (at last-used ramp-rate).
+        """ Train the magnet after cooling down. Afterwards, set the field
+        back to 0 tesla (at last-used ramp-rate).
 
         :param training_scheme: The training scheme as a list of tuples; each
-            tuple should consist of a (field, ramp-rate) pair.
+            tuple should consist of a (field [T], ramp-rate [T/min]) pair.
         """
 
         for (field, rate) in training_scheme:
